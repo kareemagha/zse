@@ -31,7 +31,7 @@ def ssh_connect(args):
         server_info = config["server"]
         auth_info = config["auth"]
     except:
-        sys.stderr.write(Fore.RED + "Error: Reading authentication method failed" + Fore.RESET + "\n")
+        sys.stderr.write(Fore.RED + "Error: Reading authentication method failed." + Fore.RESET + "\n")
         exit(1)
 
     ssh_client = paramiko.SSHClient()
@@ -99,26 +99,30 @@ def ssh_mirror(ssh_client, args):
     if not args.verbose:
         shell.send("stty -echo\n")
         
+    sys.stdout.write(Fore.GREEN + 'Input "quit" or "exit" to exit out of shell.\n' + Fore.RESET)
     time.sleep(0.1)
 
     output = shell.recv(1024).decode()
     print(output, end="")
-
+    
     while True:
-        command = input("")
-        if command.strip().lower() in {"exit", "quit"}:
-            break
-        elif command.strip().lower() in {"cls", "clear"}:
-            os.system('cls')
-        elif command.strip() == "":
-            pass
-        else: 
-            shell.send(command + " --color=auto" + "\n")
-            time.sleep(0.1)
-            if shell.recv_ready():
-                output = shell.recv(1024).decode()
-                print(output, end="")
-                
+        try:
+            command = input("")
+            if command.strip().lower() in {"exit", "quit"}:
+                break
+            elif command.strip().lower() in {"cls", "clear"}:
+                os.system('cls')
+            elif command.strip() == "":
+                pass
+            else: 
+                shell.send(command + " --color=auto" + "\n")
+                time.sleep(0.1)
+                if shell.recv_ready():
+                    output = shell.recv(1024).decode()
+                    print(output, end="")
+        except KeyboardInterrupt:
+            ssh_client.close()
+            exit(0)
                 
 if __name__ == "__main__":
     main()
