@@ -9,7 +9,6 @@ import shutil
 from colorama import init, Fore, Style
 from platformdirs import user_config_dir
 from enum import Enum, auto
-import time
 
 remote_directory = ".zse/"
 
@@ -21,8 +20,17 @@ class error(Enum):
     connection = 0
     auth = 1
     
-
-
+class status(Enum):
+    connecting = 0
+    authenticating = 1
+    sftp = 2
+    syncing = 3
+    sent = 4
+    output = 5
+    end_output = 6
+    exit_stat = 7
+    
+    
 def main():
     init()
     parser = argparse.ArgumentParser(description="Process a command string.")
@@ -30,6 +38,7 @@ def main():
     parser.add_argument('-p', '--pipe', action='store_true', help='Creates a channel to send multiple commands via the same shell.')
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose output.")
     parser.add_argument('-d', '--dir', '--directory', type=str, help="Specifies the directory that will be copied to CSE machines.")
+    parser.add_argument('-d', '--dir', '--directory', type=str, help="Clears remote zse folder")
     args = parser.parse_args()
     
     check_configs()
@@ -75,7 +84,9 @@ def ssh_connect(args):
     ssh_client = paramiko.SSHClient()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     private_key = paramiko.Ed25519Key(filename=auth_info["private_key_path"])
-        
+    
+    print_status(status.connecting, add=server_info["address"], port=server_info["port"])
+    
     if auth_info["type"] == "key":
         try:
             ssh_client.connect(
@@ -99,7 +110,7 @@ def ssh_connect(args):
             print_err_msg(error.connection)
     else:
         return
-    
+    print_status(status.authenticating, zid=server_info["username"])
     read_command(args, ssh_client, config)
     
     ssh_client.close()
@@ -113,11 +124,10 @@ def read_command(args, ssh_client, config):
         else:
             execute_user_command(ssh_client, args, command_str, config)
     except:
-        exit(1)
+        sys.exit(1)
 
 
 def execute_user_command(ssh_client, args, command_str, config):
-    print(command_str)
     
     stdin, stdout, stderr = ssh_client.exec_command(f"test -d {remote_directory}")
     exit_status = stdout.channel.recv_exit_status()
@@ -128,6 +138,7 @@ def execute_user_command(ssh_client, args, command_str, config):
             print(f"Directory '{remote_directory}' created with permissions {700}.")
         
     # sets up sftp to send files
+    print_status(status.sftp)
     sftp = ssh_client.open_sftp()
     local_dir = args.dir if args.dir else "./"
     
@@ -137,26 +148,35 @@ def execute_user_command(ssh_client, args, command_str, config):
         print(f"Files will be uploaded to: {remote_dir}")
         
     sftp_recursive_put(sftp, local_path=local_dir, remote_path=remote_dir, args = args)
+    print_status(status.syncing)
     ssh_client.exec_command("export TERM=xterm-256color")    
     command = f'cd "{remote_dir}" && {" ".join(args.command)}'
     
     if args.verbose:
         print(f"Running command: {command}")
         
-    time.sleep(0.1)
+    print_status(status.sent, command=" ".join(args.command))
+    print_status(status.output)
     stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
-    time.sleep(0.1), 
-    output = stdout.read().decode()
-    error = stderr.read().decode()
 
-    if output:
-        print(output)
-        ssh_client.close()
-        exit(0)
-    if error:
-        print(error)
-        ssh_client.close()
-        exit(0)      
+    for stdout_line in iter(stdout.readline, ""):
+        if stdout_line:
+            sys.stdout.write(stdout_line)
+            sys.stdout.flush()
+            
+    for stderr_line in iter(stderr.readline, ""):
+        if stderr_line:
+            sys.stderr.write(stderr_line)
+            sys.stderr.flush()
+
+    exit_status = stdout.channel.recv_exit_status()
+    print_status(status.end_output)
+    print_status(status.exit_stat, exit=exit_status)
+
+
+    ssh_client.close()
+    exit(0)
+
 
 def should_ignore(path):
     base_name = os.path.basename(path)
@@ -189,10 +209,16 @@ def sftp_recursive_put(sftp, local_path, remote_path, args):
                 args
             )
     else:
-        if args.verbose:
-            print(f"Transferring file: {local_path} -> {remote_path}")
+        loading_symbols = ["⠋", "⠙", "⠸", "⠴", "⠦", "⠇"]
+        for i in range(len(loading_symbols) * 3):
+            sys.stdout.write(
+                f"\r\033[KSyncing file: {loading_symbols[i % len(loading_symbols)]} {local_path} -> {remote_path}"
+            )
+            sys.stdout.flush()
+            time.sleep(0.1)
+        sys.stdout.write(f"\r\033[KTransferring file: {local_path} -> {remote_path}")
+        sys.stdout.flush()
         sftp.put(local_path, remote_path)
-
 
 # acts like an SSH console
 def ssh_mirror(ssh_client, args, command_str):
@@ -221,8 +247,6 @@ def ssh_mirror(ssh_client, args, command_str):
             elif command.strip() == "":
                 pass
             else: 
-                # if command.startswith(("ls", "grep", "diff", "vim")):
-                #     command += " --color=auto"
                 shell.send(command + "\n")
                 time.sleep(0.1)
                 if shell.recv_ready():
@@ -240,7 +264,46 @@ def print_err_msg(errno):
     elif errno == error.auth:
         sys.stderr.write(Fore.RED + "Error: Reading authentication method failed." + Fore.RESET + "\n")
     
-    exit(1)
+    sys.exit(1)
+    
+    
+def print_status(status_num, command=None, add=None, port=None, zid=None, exit=None):
+    if status_num == status.connecting:
+        sys.stdout.write(
+            f"\r\033[K\033\033[1;90m[1/5]\033[0m\tConnecting to: \033[3;36m{add}:\033[3;35m{port}\033\033[0m\n"
+        )
+    elif status_num == status.authenticating:
+        sys.stdout.write(
+            f"\r\033[K\033\033[1;90m[2/5]\033[0m\tAuthenticated as: \033[3;32m{zid}\033\033[0m\n"
+        )
+    elif status_num == status.sftp:
+        sys.stdout.write(
+            f"\r\033[K\033\033[1;90m[3/5]\033[0m\tEstablishing SFTP connection\033[0m\n"
+        )
+    elif status_num == status.syncing:
+        sys.stdout.write(
+            f"\r\033[K\033\033[1;90m[4/5]\033[0m\tSynced local files to remote\n"
+        )
+    elif status_num == status.sent:
+        sys.stdout.write(
+            f"\r\033[K\033[1;90m[5/5]\033[0m\tCommand sent: \033[33m{command}\033[0m\n"
+        )
+    elif status_num == status.output:
+        sys.stdout.write(
+            f"\033[1;35m=============== Output ===============\033[0m\n"
+        )
+    elif status_num == status.end_output:
+        sys.stdout.write(
+            f"\033[1;35m{'=' * 38}\033[0m\n"
+        )
+    elif status_num == status.exit_stat:
+        if exit == 0:
+            color = "32"  # Green
+        else:
+            color = "31"  # Red
+        sys.stdout.write(
+            f"\033[1;{color}mExit Status: {exit}\033[0m\n"
+        )
     
     
 if __name__ == "__main__":
