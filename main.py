@@ -38,7 +38,7 @@ def main():
     parser.add_argument('-p', '--pipe', action='store_true', help='Creates a channel to send multiple commands via the same shell.')
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose output.")
     parser.add_argument('-d', '--dir', '--directory', type=str, help="Specifies the directory that will be copied to CSE machines.")
-    parser.add_argument('-d', '--dir', '--directory', type=str, help="Clears remote zse folder")
+    parser.add_argument('-c', '--clear', action='store_true', help="Clears remote zse folder before syncing files")
     args = parser.parse_args()
     
     check_configs()
@@ -129,6 +129,17 @@ def read_command(args, ssh_client, config):
 
 def execute_user_command(ssh_client, args, command_str, config):
     
+    if args.clear:
+        if args.verbose:
+            print(f"Clearing remote directory {remote_directory}")
+        stdin, stdout, stderr = ssh_client.exec_command(f"rm -r {remote_directory}")
+        exit_code = stdout.channel.recv_exit_status()
+        while exit_code != 0:
+            if args.verbose:
+                print(f"Command failed with exit code {exit_code}. Retrying...")
+            stdin, stdout, stderr = ssh_client.exec_command(f"rm -r {remote_directory}")
+            exit_code = stdout.channel.recv_exit_status()
+    
     stdin, stdout, stderr = ssh_client.exec_command(f"test -d {remote_directory}")
     exit_status = stdout.channel.recv_exit_status()
     
@@ -158,6 +169,8 @@ def execute_user_command(ssh_client, args, command_str, config):
     print_status(status.sent, command=" ".join(args.command))
     print_status(status.output)
     stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
+
+    # essentially just allows fro real time output from terminal
 
     for stdout_line in iter(stdout.readline, ""):
         if stdout_line:
