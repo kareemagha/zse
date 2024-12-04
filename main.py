@@ -138,8 +138,8 @@ def execute_user_command(ssh_client, args, command_str, config):
     remote_dir = os.path.join(remote_directory, timestamp)
     if args.verbose:
         print(f"Files will be uploaded to: {remote_dir}")
-    
-    sftp_recursive_put(sftp, local_path=local_dir, remote_path=remote_dir)    
+        
+    sftp_recursive_put(sftp, local_path=local_dir, remote_path=remote_dir, args = args)    
     command = f'cd "{remote_dir}" && {" ".join(args.command)}'
     
     if args.verbose:
@@ -152,20 +152,15 @@ def execute_user_command(ssh_client, args, command_str, config):
     error = stderr.read().decode()
 
     if output:
-        print("Output:")
         print(output)
-    if error:
-        print("Error:")
-        print(error)      
-        
-    ssh_client.close()
-    if error:
-        exit(1)
-    else:
+        ssh_client.close()
         exit(0)
+    if error:
+        print(error)
+        ssh_client.close()
+        exit(0)      
 
 def should_ignore(path):
-    """Check if the directory or file should be ignored."""
     base_name = os.path.basename(path)
     if base_name in IGNORE_DIRS:
         return True
@@ -174,29 +169,31 @@ def should_ignore(path):
     return False
 
 
-def sftp_recursive_put(sftp, local_path, remote_path):
+def sftp_recursive_put(sftp, local_path, remote_path, args):
     if should_ignore(local_path):
-        print(f"Ignoring: {local_path}")
+        if args.verbose:
+            print(f"Ignoring: {local_path}")
         return
     
     if os.path.isdir(local_path):
         try:
             sftp.stat(remote_path)
         except FileNotFoundError:
-            print(f"Creating remote directory: {remote_path}")
+            if args.verbose:
+                print(f"Creating remote directory: {remote_path}")
             sftp.mkdir(remote_path)
 
         for item in os.listdir(local_path):
             sftp_recursive_put(
                 sftp,
                 os.path.join(local_path, item),
-                f"{remote_path}/{item}".replace("\\", "/")
+                f"{remote_path}/{item}".replace("\\", "/"),
+                args
             )
     else:
-        print(f"Transferring file: {local_path} -> {remote_path}")
+        if args.verbose:
+            print(f"Transferring file: {local_path} -> {remote_path}")
         sftp.put(local_path, remote_path)
-
-
 
 
 # acts like an SSH console
