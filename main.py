@@ -224,8 +224,8 @@ def ssh_mirror(ssh_client, args, command_str):
             elif command.strip() == "":
                 pass
             else: 
-                if command.startswith(("ls", "grep", "diff", "vim")):
-                    command += " --color=auto"
+                # if command.startswith(("ls", "grep", "diff", "vim")):
+                #     command += " --color=auto"
                 shell.send(command + "\n")
                 time.sleep(0.1)
                 if shell.recv_ready():
