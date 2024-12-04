@@ -99,9 +99,6 @@ def ssh_connect(args):
             print_err_msg(error.connection)
     else:
         return
-
-    # if args.pipe:
-    #     ssh_mirror(ssh_client, args)
     
     read_command(args, ssh_client, config)
     
