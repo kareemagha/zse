@@ -139,15 +139,16 @@ def execute_user_command(ssh_client, args, command_str, config):
     if args.verbose:
         print(f"Files will be uploaded to: {remote_dir}")
         
-    sftp_recursive_put(sftp, local_path=local_dir, remote_path=remote_dir, args = args)    
+    sftp_recursive_put(sftp, local_path=local_dir, remote_path=remote_dir, args = args)
+    ssh_client.exec_command("export TERM=xterm-256color")    
     command = f'cd "{remote_dir}" && {" ".join(args.command)}'
     
     if args.verbose:
         print(f"Running command: {command}")
         
     time.sleep(0.1)
-    stdin, stdout, stderr = ssh_client.exec_command(command)
-    time.sleep(0.1)
+    stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
+    time.sleep(0.1), 
     output = stdout.read().decode()
     error = stderr.read().decode()
 
