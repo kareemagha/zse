@@ -33,3 +33,8 @@ To get started with zse, follow these steps:
     ```python
     pip install -r requirements.txt
     ```
+
+## Task list
+- [ ] Add Y/n confirmation before fetching from remote
+- [ ] Enhance pipe feature i.e. actually make it useful
+- [ ] Add more to readme.md such as how to create exe and add to system path
