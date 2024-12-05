@@ -1,5 +1,5 @@
 # zse
-A python program built for UNSW students to submit files and run autotests on local files.
+A python program built for UNSW students to submit files and run autotests on local files. Heavily inspired by [cserun](https://cserun.bojin.co/)
 
 
 ## Usage
