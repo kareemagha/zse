@@ -115,7 +115,11 @@ def ssh_connect(args):
 
     ssh_client = paramiko.SSHClient()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    private_key = paramiko.Ed25519Key(filename=auth_info["private_key_path"])
+    try:
+        private_key = paramiko.Ed25519Key(
+            filename=auth_info["private_key_path"])
+    except (FileNotFoundError, SSHException) as _e:
+        print_err_msg(Error.CONNECTION)
 
     print_status(
         Status.CONNECTING, add=server_info["address"], port=server_info["port"]
@@ -328,12 +332,13 @@ def ssh_mirror(ssh_client, args, command_str):
 
 def print_err_msg(errno):
     """Helper function that prints error messages"""
+    config_dir = str(user_config_dir("zse"))
     if errno == Error.CONNECTION:
         sys.stderr.write(
-            Fore.RED
-            + "Error: Cannot connect to CSE server. Review config file."
-            + Fore.RESET
-            + "\n"
+            f"{Fore.RED}"
+            + "Error: Cannot connect to CSE server. Review config file @ "
+            + f"{config_dir}."
+            + f"{Fore.RESET}\n"
         )
     elif errno == Error.AUTH:
         sys.stderr.write(
