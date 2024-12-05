@@ -187,15 +187,15 @@ def execute_user_command(ssh_client, args):
     if args.clear:
         if args.verbose:
             print(f"Clearing remote directory {REMOTE_DIR}")
-        _stdin, stdout, stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
+        _stdin, stdout, _stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
         exit_code = stdout.channel.recv_exit_status()
         while exit_code != 0:
             if args.verbose:
                 print(f"Command failed with exit code {exit_code}. Retrying...")
-            _stdin, stdout, stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
+            _stdin, stdout, _stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
             exit_code = stdout.channel.recv_exit_status()
 
-    _stdin, stdout, stderr = ssh_client.exec_command(f"test -d {REMOTE_DIR}")
+    _stdin, stdout, _stderr = ssh_client.exec_command(f"test -d {REMOTE_DIR}")
     exit_status = stdout.channel.recv_exit_status()
 
     if not exit_status == 0:
@@ -210,7 +210,7 @@ def execute_user_command(ssh_client, args):
 
     timestamp = time.strftime("%a %d %b %Y %H-%M-%S")
     remote_dir = os.path.join(REMOTE_DIR, timestamp)
-    
+
     if args.local:
         run_and_donwload(sftp, remote_dir, ssh_client, args)
     else:
@@ -260,7 +260,7 @@ def run_and_donwload(sftp, remote_dir, ssh_client, args):
     command = f'cd "{remote_dir}" && {" ".join(args.command)}'
     print_status(Status.SENT, command=" ".join(args.command))
     _stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
-    
+
     if args.local:
         local_dir = args.local
     else:
@@ -281,9 +281,9 @@ def run_and_donwload(sftp, remote_dir, ssh_client, args):
     exit_status = stdout.channel.recv_exit_status()
     print_status(Status.END_OUTPUT)
     print_status(Status.EXIT_STAT, exit_stat=exit_status)
-    
+
     download_dir(sftp, remote_dir, local_dir, args)
-    
+
     sys.exit(0)
 
 
@@ -433,15 +433,15 @@ def create_status_printer():
     """Helper function to generate satus messages"""
     counter = 0
 
-    def print_status(status_num, **kwargs):
+    def _print_status(status_num, **kwargs):
         nonlocal counter
-        
+
         non_increment = {
-            Status.OUTPUT, 
-            Status.END_OUTPUT, 
+            Status.OUTPUT,
+            Status.END_OUTPUT,
             Status.EXIT_STAT
         }
-        
+
         if status_num not in non_increment:
             counter += 1
             total_steps = 5
@@ -458,7 +458,7 @@ def create_status_printer():
         elif status_num == Status.AUTHENTICATING:
             sys.stdout.write(f"Authenticated as: \033[3;32m{zid}\033[0m\n")
         elif status_num == Status.SFTP:
-            sys.stdout.write(f"Establishing SFTP connection\033[0m\n")
+            sys.stdout.write("Establishing SFTP connection\033[0m\n")
         elif status_num == Status.SYNCING:
             sys.stdout.write("Synced local files to remote\n")
         elif status_num == Status.SENT:
@@ -471,12 +471,10 @@ def create_status_printer():
             colour = "32" if exit_stat == 0 else "31"
             sys.stdout.write(f"\033[1;{colour}mExit status: {exit_stat}\033[0m\n")
 
-    return print_status
+    return _print_status
 
-# Usage
+
 print_status = create_status_printer()
-
-
 
 if __name__ == "__main__":
     main()
