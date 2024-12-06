@@ -22,12 +22,15 @@ from colorama import init, Fore, Style
 REMOTE_DIR = ".zse/"
 IGNORE_DIRS = [".git"]
 IGNORE_PREFIXES = ["_", "."]
+VERSION_NO = 1.1
 
 
 class Error(Enum):
     """Enum for error types"""
     CONNECTION = 0
     AUTH = 1
+    EMPTY = 2
+    REMOVAL = 3
 
 
 class Status(Enum):
@@ -44,14 +47,37 @@ class Status(Enum):
 
 def main():
     """Main function for program"""
-    init()
-    parser = argparse.ArgumentParser(description="Process a command string.")
+    init() # initialises colourama
+    args = setup_argparse()
+    if args.version:
+        print_ver()
+    check_configs()
+    ssh_connect(args)
+
+def print_ver():
+    """Prints version number for program"""
+    print(f"zse v{VERSION_NO}")
+    print("This is free software: you are free to change and redistribute it.\n")
+    print("Written by Kareem Agha.")
+    sys.exit(0)
+
+
+def setup_argparse():
+    """Setups argparse to read and output the result of arguments"""
+    parser = argparse.ArgumentParser(
+    description="Process a command string.")
     parser.add_argument("command", help="The command to execute", nargs="+")
     parser.add_argument(
         "-p",
         "--pipe",
         action="store_true",
         help="Creates a channel to send multiple commands via the same shell.",
+    )
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=print_ver()
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output."
@@ -77,8 +103,7 @@ def main():
     )
     args = parser.parse_args()
 
-    check_configs()
-    ssh_connect(args)
+    return args
 
 
 def check_configs():
@@ -98,7 +123,7 @@ def create_config():
     try:
         shutil.copy(source_file, config_dir)
     except FileNotFoundError:
-        print("Source file not found.")
+        print("Source config file not found.")
     except PermissionError:
         print("Permission denied.")
     except shutil.SameFileError:
@@ -122,11 +147,6 @@ def ssh_connect(args):
 
     ssh_client = paramiko.SSHClient()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    try:
-        private_key = paramiko.Ed25519Key(
-            filename=auth_info["private_key_path"])
-    except (FileNotFoundError, SSHException) as _e:
-        print_err_msg(Error.CONNECTION)
 
     print_status(
         Status.CONNECTING, add=server_info["address"], port=server_info["port"]
@@ -137,14 +157,16 @@ def ssh_connect(args):
             ssh_client.connect(
                 hostname=server_info["address"],
                 username=server_info["username"],
-                pkey=private_key,
+                pkey=paramiko.Ed25519Key(
+                    filename=auth_info["private_key_path"]),
                 password=auth_info["password"],
                 port=server_info["port"],
             )
         except (AuthenticationException,
                 SSHException,
                 socket.error,
-                socket.timeout) as _:
+                socket.timeout,
+                KeyboardInterrupt) as _:
             print_err_msg(Error.CONNECTION)
     elif auth_info["type"] == "password":
         try:
@@ -157,10 +179,11 @@ def ssh_connect(args):
         except (AuthenticationException,
             SSHException,
             socket.error,
-            socket.timeout) as _:
+            socket.timeout,
+            KeyboardInterrupt) as _:
             print_err_msg(Error.CONNECTION)
     else:
-        return
+        print_err_msg(Error.EMPTY)
     print_status(Status.AUTHENTICATING, zid=server_info["username"])
     read_command(args, ssh_client)
 
@@ -178,7 +201,8 @@ def read_command(args, ssh_client):
     except (SSHException,
             IOError,
             OSError,
-            subprocess.CalledProcessError) as _:
+            subprocess.CalledProcessError,
+            KeyboardInterrupt) as _:
         sys.exit(1)
 
 
@@ -190,11 +214,15 @@ def execute_user_command(ssh_client, args):
         _stdin, stdout, _stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
         exit_code = stdout.channel.recv_exit_status()
         while exit_code != 0:
-            if args.verbose:
-                print(f"Command failed with exit code {exit_code}. Retrying...")
-            _stdin, stdout, _stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
-            exit_code = stdout.channel.recv_exit_status()
+            try:
+                if args.verbose:
+                    print(f"Command failed with exit code {exit_code}. Retrying...")
+                _stdin, stdout, _stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
+                exit_code = stdout.channel.recv_exit_status()
+            except KeyboardInterrupt:
+                print_err_msg(Error.REMOVAL)
 
+    # checks the file exists in the dir
     _stdin, stdout, _stderr = ssh_client.exec_command(f"test -d {REMOTE_DIR}")
     exit_status = stdout.channel.recv_exit_status()
 
@@ -224,6 +252,8 @@ def upload_and_run(sftp, local_dir, remote_dir, ssh_client, args):
 
     sftp_recursive_put(sftp, local_path=local_dir, remote_path=remote_dir, args=args)
     print_status(Status.SYNCING)
+    # may be required to display terminal colours - will work without depending
+    # on bashrc config on CSE machines
     ssh_client.exec_command("export TERM=xterm-256color")
     command = f'cd "{remote_dir}" && {" ".join(args.command)}'
 
@@ -234,20 +264,7 @@ def upload_and_run(sftp, local_dir, remote_dir, ssh_client, args):
     print_status(Status.OUTPUT)
     _stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
 
-    # essentially just allows fro real time output from terminal
-    for stdout_line in iter(stdout.readline, ""):
-        if stdout_line:
-            sys.stdout.write(stdout_line)
-            sys.stdout.flush()
-
-    for stderr_line in iter(stderr.readline, ""):
-        if stderr_line:
-            sys.stderr.write(stderr_line)
-            sys.stderr.flush()
-
-    exit_status = stdout.channel.recv_exit_status()
-    print_status(Status.END_OUTPUT)
-    print_status(Status.EXIT_STAT, exit_stat=exit_status)
+    read_terminal(stdout, stderr)
 
     ssh_client.close()
     sys.exit(0)
@@ -255,6 +272,7 @@ def upload_and_run(sftp, local_dir, remote_dir, ssh_client, args):
 
 def run_and_donwload(sftp, remote_dir, ssh_client, args):
     """Runs remote command and downloads files from dir"""
+
     sftp.mkdir(remote_dir)
     ssh_client.exec_command("export TERM=xterm-256color")
     command = f'cd "{remote_dir}" && {" ".join(args.command)}'
@@ -267,7 +285,14 @@ def run_and_donwload(sftp, remote_dir, ssh_client, args):
         local_dir = "./"
 
     print_status(Status.OUTPUT)
-    # essentially just allows fro real time output from terminal
+    read_terminal(stdout, stderr)
+    download_dir(sftp, remote_dir, local_dir, args)
+
+    sys.exit(0)
+
+
+def read_terminal(stdout, stderr):
+    """Reads stdout and stderr of program in semi-real time"""
     for stdout_line in iter(stdout.readline, ""):
         if stdout_line:
             sys.stdout.write(stdout_line)
@@ -282,38 +307,37 @@ def run_and_donwload(sftp, remote_dir, ssh_client, args):
     print_status(Status.END_OUTPUT)
     print_status(Status.EXIT_STAT, exit_stat=exit_status)
 
-    download_dir(sftp, remote_dir, local_dir, args)
-
-    sys.exit(0)
-
 
 
 def download_dir(sftp, remote_path, local_path, args):
     """Recursively look through remote dirs to dowload their files"""
-    os.makedirs(local_path, exist_ok=True)
-    for item in sftp.listdir_attr(remote_path):
-        remote_item_path = f"{remote_path}/{item.filename}"
-        local_item_path = os.path.join(local_path, item.filename)
+    try:
+        os.makedirs(local_path, exist_ok=True)
+        for item in sftp.listdir_attr(remote_path):
+            remote_item_path = f"{remote_path}/{item.filename}"
+            local_item_path = os.path.join(local_path, item.filename)
 
-        if stat.S_ISDIR(item.st_mode):
-            if args.verbose:
-                print(f"Entering directory: {remote_item_path}")
-            download_dir(sftp, remote_item_path, local_item_path, args)
-            if args.clear:
-                sftp.rmdir(remote_item_path)
+            if stat.S_ISDIR(item.st_mode):
                 if args.verbose:
-                    print(f"Deleted remote directory: {remote_item_path}")
-        else:
-            if args.verbose:
-                print(f"Downloading file: {remote_item_path}")
-            sftp.get(remote_item_path, local_item_path)
-            if args.verbose:
-                print(f"Downloaded: {remote_item_path} to {local_item_path}")
-            if args.clear:
-                sftp.remove(remote_item_path)
+                    print(f"Entering directory: {remote_item_path}")
+                download_dir(sftp, remote_item_path, local_item_path, args)
+                if args.clear:
+                    sftp.rmdir(remote_item_path)
+                    if args.verbose:
+                        print(f"Deleted remote directory: {remote_item_path}")
+            else:
                 if args.verbose:
-                    print(f"Deleted remote file: {remote_item_path}")
-
+                    print(f"Downloading file: {remote_item_path}")
+                sftp.get(remote_item_path, local_item_path)
+                if args.verbose:
+                    print(f"Downloaded: {remote_item_path} to {local_item_path}")
+                if args.clear:
+                    sftp.remove(remote_item_path)
+                    if args.verbose:
+                        print(f"Deleted remote file: {remote_item_path}")
+    except KeyboardInterrupt:
+        print(Fore.RED + "\nConnection closed by user." + Style.RESET_ALL)
+        sys.exit(0)
 
 def should_ignore(path):
     """Helper function to determine what files/foldes to ignore when syncing"""
@@ -324,45 +348,48 @@ def should_ignore(path):
         return True
     return False
 
-
 def sftp_recursive_put(sftp, local_path, remote_path, args):
     """Recursively looks through direcotries to find files to sync"""
-    if should_ignore(local_path):
-        if args.verbose:
-            print(f"Ignoring: {local_path}")
-        return
-
-    if os.path.isdir(local_path):
-        try:
-            sftp.stat(remote_path)
-        except FileNotFoundError:
+    try:
+        if should_ignore(local_path):
             if args.verbose:
-                print(f"Creating remote directory: {remote_path}")
-            sftp.mkdir(remote_path)
+                print(f"Ignoring: {local_path}")
+            return
 
-        for item in os.listdir(local_path):
-            sftp_recursive_put(
-                sftp,
-                os.path.join(local_path, item),
-                f"{remote_path}/{item}".replace("\\", "/"),
-                args,
-            )
-    else:
-        loading_symbols = ["⠋", "⠙", "⠸", "⠴", "⠦", "⠇"]
-        for i in range(len(loading_symbols) * 3):
-            sys.stdout.write(
-                f"\r\033[KSyncing file: "
-                f"{loading_symbols[i % len(loading_symbols)]} "
-                f"{local_path} -> "
-                f"{remote_path}"
-            )
+        if os.path.isdir(local_path):
+            try:
+                sftp.stat(remote_path)
+            except FileNotFoundError:
+                if args.verbose:
+                    print(f"Creating remote directory: {remote_path}")
+                sftp.mkdir(remote_path)
+
+            for item in os.listdir(local_path):
+                sftp_recursive_put(
+                    sftp,
+                    os.path.join(local_path, item),
+                    f"{remote_path}/{item}".replace("\\", "/"),
+                    args,
+                )
+        else:
+            loading_symbols = ["⠋", "⠙", "⠸", "⠴", "⠦", "⠇"]
+            for i in range(len(loading_symbols) * 3):
+                sys.stdout.write(
+                    f"\r\033[KSyncing file: "
+                    f"{loading_symbols[i % len(loading_symbols)]} "
+                    f"{local_path} -> "
+                    f"{remote_path}"
+                )
+                sys.stdout.flush()
+            sys.stdout.write(f"\r\033[KTransferring file: {local_path} -> {remote_path}")
             sys.stdout.flush()
-            time.sleep(0.1)
-        sys.stdout.write(f"\r\033[KTransferring file: {local_path} -> {remote_path}")
-        sys.stdout.flush()
-        sftp.put(local_path, remote_path)
+            sftp.put(local_path, remote_path)
+    except KeyboardInterrupt:
+        print(Fore.RED + "\nConnection closed by user." + Style.RESET_ALL)
+        sys.exit(0)
 
 
+# THIS IS A WIP - MAY EVENTUALLY REMOVE
 def ssh_mirror(ssh_client, args, command_str):
     """Pipe function that acts like an ssh console
         Currently a WIP
@@ -425,7 +452,19 @@ def print_err_msg(errno):
             + Fore.RESET
             + "\n"
         )
-
+    elif errno == Error.EMPTY:
+        sys.stderr.write(
+            f"{Fore.RED}"
+            + "Error: Reading config.ini failed. Review config file @ "
+            + f"{config_dir}"
+            + f"{Fore.RESET}"
+        )
+    elif Error.REMOVAL:
+        sys.stderr.write(
+            f"{Fore.RED}"
+            + "Error: Cannot delete remote directory. Please review file permissions."
+            + f"{Fore.RESET}"
+        )
     sys.exit(1)
 
 
