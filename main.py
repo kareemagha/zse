@@ -49,16 +49,8 @@ def main():
     """Main function for program"""
     init() # initialises colourama
     args = setup_argparse()
-    if args.version:
-        print_ver()
     check_configs()
     ssh_connect(args)
-
-def print_ver():
-    """Prints version number for program"""
-    print(f"zse v{VERSION_NO}")
-    print("This is free software: you are free to change and redistribute it.\n")
-    print("Written by Kareem Agha.")
     sys.exit(0)
 
 
@@ -77,7 +69,7 @@ def setup_argparse():
         "-V",
         "--version",
         action="version",
-        version=print_ver()
+        version="v1.1.0"
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output."
@@ -148,9 +140,12 @@ def ssh_connect(args):
     ssh_client = paramiko.SSHClient()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    print_status(
-        Status.CONNECTING, add=server_info["address"], port=server_info["port"]
-    )
+    try:
+        print_status(
+            Status.CONNECTING, add=server_info["address"], port=server_info["port"]
+        )
+    except (KeyError, TypeError, ValueError) as _config_err:
+        print_err_msg(Error.EMPTY)
 
     if auth_info["type"] == "key":
         try:
@@ -292,7 +287,7 @@ def run_and_donwload(sftp, remote_dir, ssh_client, args):
 
 
 def read_terminal(stdout, stderr):
-    """Reads stdout and stderr of program in semi-real time"""
+    """Reads stdout and stderr of program in semi real time"""
     for stdout_line in iter(stdout.readline, ""):
         if stdout_line:
             sys.stdout.write(stdout_line)
@@ -308,11 +303,11 @@ def read_terminal(stdout, stderr):
     print_status(Status.EXIT_STAT, exit_stat=exit_status)
 
 
-
 def download_dir(sftp, remote_path, local_path, args):
-    """Recursively look through remote dirs to dowload their files"""
+    """Recursively download remote directories and their files."""
     try:
         os.makedirs(local_path, exist_ok=True)
+
         for item in sftp.listdir_attr(remote_path):
             remote_item_path = f"{remote_path}/{item.filename}"
             local_item_path = os.path.join(local_path, item.filename)
@@ -321,23 +316,41 @@ def download_dir(sftp, remote_path, local_path, args):
                 if args.verbose:
                     print(f"Entering directory: {remote_item_path}")
                 download_dir(sftp, remote_item_path, local_item_path, args)
+
                 if args.clear:
                     sftp.rmdir(remote_item_path)
                     if args.verbose:
                         print(f"Deleted remote directory: {remote_item_path}")
             else:
-                if args.verbose:
-                    print(f"Downloading file: {remote_item_path}")
-                sftp.get(remote_item_path, local_item_path)
-                if args.verbose:
-                    print(f"Downloaded: {remote_item_path} to {local_item_path}")
-                if args.clear:
-                    sftp.remove(remote_item_path)
-                    if args.verbose:
-                        print(f"Deleted remote file: {remote_item_path}")
+                handle_file(sftp, item, remote_item_path,
+                            local_item_path, args)
     except KeyboardInterrupt:
         print(Fore.RED + "\nConnection closed by user." + Style.RESET_ALL)
         sys.exit(0)
+
+
+def handle_file(sftp, item, remote_item_path, local_item_path, args):
+    """Handles downloading a single file and optionally clearing it."""
+    if args.verbose:
+        print(f"Processing file: {remote_item_path}")
+
+    if os.path.isfile(local_item_path):
+        user_input = input(
+            f"{item.filename} already exists. Replace it? (y/n): ").lower()
+        if user_input not in ["y", "yes"]:
+            if args.verbose:
+                print(f"Skipped: {remote_item_path}")
+            return
+
+    sftp.get(remote_item_path, local_item_path)
+    if args.verbose:
+        print(f"Downloaded: {remote_item_path} to {local_item_path}")
+
+    if args.clear:
+        sftp.remove(remote_item_path)
+        if args.verbose:
+            print(f"Deleted remote file: {remote_item_path}")
+
 
 def should_ignore(path):
     """Helper function to determine what files/foldes to ignore when syncing"""
@@ -374,15 +387,20 @@ def sftp_recursive_put(sftp, local_path, remote_path, args):
         else:
             loading_symbols = ["⠋", "⠙", "⠸", "⠴", "⠦", "⠇"]
             for i in range(len(loading_symbols) * 3):
-                sys.stdout.write(
+                terminal_length = shutil.get_terminal_size().columns
+                print(
                     f"\r\033[KSyncing file: "
                     f"{loading_symbols[i % len(loading_symbols)]} "
                     f"{local_path} -> "
-                    f"{remote_path}"
+                    f"{remote_path}"[:terminal_length],
+                    flush=True,
+                    end=""
                 )
-                sys.stdout.flush()
-            sys.stdout.write(f"\r\033[KTransferring file: {local_path} -> {remote_path}")
-            sys.stdout.flush()
+            print(f"\r\033[KTransferring file: "
+                  f"{local_path} -> {remote_path}"[:terminal_length],
+                  flush=True,
+                  end=""
+                  )
             sftp.put(local_path, remote_path)
     except KeyboardInterrupt:
         print(Fore.RED + "\nConnection closed by user." + Style.RESET_ALL)
