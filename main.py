@@ -47,7 +47,7 @@ class Status(Enum):
 
 def main():
     """Main function for program"""
-    init() # initialises colourama
+    init()  # initialises colourama
     args = setup_argparse()
     check_configs()
     ssh_connect(args)
@@ -57,7 +57,7 @@ def main():
 def setup_argparse():
     """Setups argparse to read and output the result of arguments"""
     parser = argparse.ArgumentParser(
-    description="Process a command string.")
+        description="Process a command string.")
     parser.add_argument("command", help="The command to execute", nargs="+")
     parser.add_argument(
         "-p",
@@ -86,6 +86,12 @@ def setup_argparse():
         "--clear",
         action="store_true",
         help="Clears remote zse folder before syncing files",
+    )
+    parser.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="Force file syncing, overwriting existing files without user input"
     )
     parser.add_argument(
         "-l",
@@ -172,10 +178,10 @@ def ssh_connect(args):
                 port=server_info["port"],
             )
         except (AuthenticationException,
-            SSHException,
-            socket.error,
-            socket.timeout,
-            KeyboardInterrupt) as _:
+                SSHException,
+                socket.error,
+                socket.timeout,
+                KeyboardInterrupt) as _:
             print_err_msg(Error.CONNECTION)
     else:
         print_err_msg(Error.EMPTY)
@@ -206,13 +212,15 @@ def execute_user_command(ssh_client, args):
     if args.clear:
         if args.verbose:
             print(f"Clearing remote directory {REMOTE_DIR}")
-        _stdin, stdout, _stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
+        _stdin, stdout, _stderr = ssh_client.exec_command(
+            f"rm -r {REMOTE_DIR}")
         exit_code = stdout.channel.recv_exit_status()
         while exit_code != 0:
             try:
                 if args.verbose:
                     print(f"Command failed with exit code {exit_code}. Retrying...")
-                _stdin, stdout, _stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
+                _stdin, stdout, _stderr = ssh_client.exec_command(
+                    f"rm -r {REMOTE_DIR}")
                 exit_code = stdout.channel.recv_exit_status()
             except KeyboardInterrupt:
                 print_err_msg(Error.REMOVAL)
@@ -245,7 +253,8 @@ def upload_and_run(sftp, local_dir, remote_dir, ssh_client, args):
     if args.verbose:
         print(f"Files will be uploaded to: {remote_dir}")
 
-    sftp_recursive_put(sftp, local_path=local_dir, remote_path=remote_dir, args=args)
+    sftp_recursive_put(sftp, local_path=local_dir,
+                       remote_path=remote_dir, args=args)
     print_status(Status.SYNCING)
     # may be required to display terminal colours - will work without depending
     # on bashrc config on CSE machines
@@ -334,7 +343,7 @@ def handle_file(sftp, item, remote_item_path, local_item_path, args):
     if args.verbose:
         print(f"Processing file: {remote_item_path}")
 
-    if os.path.isfile(local_item_path):
+    if os.path.isfile(local_item_path) and not args.force:
         user_input = input(
             f"{item.filename} already exists. Replace it? (y/n): ").lower()
         if user_input not in ["y", "yes"]:
@@ -360,6 +369,7 @@ def should_ignore(path):
     if any(base_name.startswith(prefix) for prefix in IGNORE_PREFIXES):
         return True
     return False
+
 
 def sftp_recursive_put(sftp, local_path, remote_path, args):
     """Recursively looks through direcotries to find files to sync"""
@@ -452,7 +462,6 @@ def ssh_mirror(ssh_client, args, command_str):
             sys.exit(0)
 
 
-
 def print_err_msg(errno):
     """Helper function that prints error messages"""
     config_dir = str(user_config_dir("zse"))
@@ -521,7 +530,8 @@ def create_status_printer():
         elif status_num == Status.SENT:
             sys.stdout.write(f"Command sent: \033[33m{command}\033[0m\n")
         elif status_num == Status.OUTPUT:
-            sys.stdout.write("\033[1;35m=============== Output ===============\033[0m\n")
+            sys.stdout.write(
+                "\033[1;35m=============== Output ===============\033[0m\n")
         elif status_num == Status.END_OUTPUT:
             sys.stdout.write(f"\033[1;35m{'=' * 38}\033[0m\n")
         elif status_num == Status.EXIT_STAT:
