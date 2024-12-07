@@ -11,6 +11,7 @@ from enum import Enum
 import configparser
 import socket
 import subprocess
+import platformdirs
 from platformdirs import user_config_dir
 import paramiko
 from paramiko import (
