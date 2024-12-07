@@ -12,8 +12,6 @@ import configparser
 import socket
 import subprocess
 from platformdirs import user_config_dir
-from pathlib import Path
-from appdirs import user_config_dir
 import pkg_resources
 import paramiko
 from paramiko import (
@@ -131,8 +129,14 @@ def create_config():
                 shutil.copy(source_file, config_file_path)
             else:
                 print("Sample config file is missing.")
-        except Exception as e:
-            print(f"Error creating the config file: {e}")
+        except FileNotFoundError:
+            print("Source config file not found.")
+        except PermissionError:
+            print("Permission denied.")
+        except shutil.SameFileError:
+            print("Source and destination are the same file.")
+        except IOError as e:
+            print(f"IO error occurred: {e}")
 
 
 def ssh_connect(args):
