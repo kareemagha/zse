@@ -57,7 +57,7 @@ def main():
 def setup_argparse():
     """Setups argparse to read and output the result of arguments"""
     parser = argparse.ArgumentParser(
-        description="Process a command string.")
+        description="CLI tool that allows UNSW students to submit work to CSE machines.")
     parser.add_argument("command", help="The command to execute", nargs="+")
     parser.add_argument(
         "-p",
