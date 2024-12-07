@@ -12,6 +12,9 @@ import configparser
 import socket
 import subprocess
 from platformdirs import user_config_dir
+from pathlib import Path
+from appdirs import user_config_dir
+import pkg_resources
 import paramiko
 from paramiko import (
     AuthenticationException,
@@ -114,20 +117,22 @@ def check_configs():
 
 
 def create_config():
-    """Creates a config file if it doesnt exist"""
-    source_file = os.path.join(os.getcwd(), "config.ini")
+    """Creates a config file if it doesn't exist, either by copying or generating one."""
     config_dir = user_config_dir("zse")
     os.makedirs(config_dir, exist_ok=True)
-    try:
-        shutil.copy(source_file, config_dir)
-    except FileNotFoundError:
-        print("Source config file not found.")
-    except PermissionError:
-        print("Permission denied.")
-    except shutil.SameFileError:
-        print("Source and destination are the same file.")
-    except (IOError, OSError) as e:
-        print(f"File operation error occurred: {e}")
+    config_file_path = os.path.join(config_dir, "config.ini")
+
+    if not os.path.exists(config_file_path):
+        try:
+            source_file = pkg_resources.resource_filename(
+                __name__, "config.ini"
+            )
+            if os.path.exists(source_file):
+                shutil.copy(source_file, config_file_path)
+            else:
+                print("Sample config file is missing.")
+        except Exception as e:
+            print(f"Error creating the config file: {e}")
 
 
 def ssh_connect(args):

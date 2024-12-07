@@ -1,5 +1,5 @@
 """Setup file for pip installs"""
-from setuptools import setup
+from setuptools import setup, find_packages
 
 with open("requirements.txt", encoding="utf-8") as f:
     requirements = f.read().splitlines()
@@ -9,7 +9,11 @@ setup(
     version='1.1.0',
     description='A CLI tool that allows UNSW students to submit work to CSE machines.',
     author='Kareem Agha',
-    author_email='admin@kareem-agha.com',
+    packages=find_packages(),
+    package_data={
+        '': ['config.ini'],
+    },
+    include_package_data=True,
     py_modules=['main'],
     install_requires=requirements,
     entry_points={
