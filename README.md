@@ -23,18 +23,17 @@ Exit Status: <span style="color: lightgreen;">0</span>
 
 
 ## Installation
-To get started with zse, follow these steps:
+To get started with `zse`, follow these steps:
 
-1. Clone this repository:
-   ```git
-   git clone https://github.com/kareemagha/zse.git
+1. Install the package using [pip](https://pip.pypa.io/en/stable/):
+
+   ```bash
+   pip install zse
    ```
-2. Install required dependencies:
-    ```python
-    pip install -r requirements.txt
-    ```
+
+
 
 ## Task list
-- [ ] Add Y/n confirmation before fetching from remote
+- [x] Add Y/n confirmation before fetching from remote
 - [ ] Enhance pipe feature i.e. actually make it useful
-- [ ] Add more to readme.md such as how to create exe and add to system path
+- [x] Add more to readme.md such as how to create exe and add to system path

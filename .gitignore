@@ -3,3 +3,4 @@
 tests/*
 build/*
 dist/*
+zse.egg-info/*
