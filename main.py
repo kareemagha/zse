@@ -22,7 +22,7 @@ from colorama import init, Fore, Style
 REMOTE_DIR = ".zse/"
 IGNORE_DIRS = [".git"]
 IGNORE_PREFIXES = ["_", "."]
-VERSION_NO = 1.1
+VERSION_NO = "1.1.1"
 
 
 class Error(Enum):

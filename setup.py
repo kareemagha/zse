@@ -15,7 +15,7 @@ with open("requirements.txt", encoding="utf-8") as f:
 
 setup(
     name='zse',
-    version='1.1.0',
+    version='1.1.1',
     description='A CLI tool that allows UNSW students to submit work to CSE machines.',
     author='Kareem Agha',
     packages=find_packages(),
