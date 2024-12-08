@@ -139,9 +139,15 @@ def create_config():
         try:
             with open(config_file_path, 'w') as config_file:
                 config_file.write(config_content.strip())
-                print("\033[32mConfig file created successfully.\033[0m")
+                print("\033[32mConfig file created successfully.\033[0m\n")
+                print("Edit this file to use zse:")
+                print(f"{config_file_path}")
+                sys.exit(0)
         except Exception as e:
             print(f"\033[31mError creating config file: {e}\033[0m")
+            print("Edit this file to use zse:")
+            print(f"{config_file_path}")
+            sys.exit(0)
 
 
 def ssh_connect(args):
