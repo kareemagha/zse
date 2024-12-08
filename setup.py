@@ -10,9 +10,6 @@ class PostInstallCommand(install):
         print("You will need to configure your settings."
               + "A config.ini file will be created when you first run zse")
 
-with open("requirements.txt", encoding="utf-8") as f:
-    requirements = f.read().splitlines()
-
 setup(
     name='zse',
     version='1.1.1',
@@ -24,7 +21,12 @@ setup(
     },
     include_package_data=True,
     py_modules=['main'],
-    install_requires=requirements,
+    install_requires=[
+        'paramiko',
+        'colorama',
+        'platformdirs',
+        'setuptools',
+    ],
     entry_points={
         'console_scripts': [
             'zse=main:main',
