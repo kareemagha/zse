@@ -3,10 +3,12 @@ from setuptools import setup, find_packages
 from setuptools.command.install import install
 
 class PostInstallCommand(install):
+    """Prints message after install"""
     def run(self):
         install.run(self)
         print("\033[1;32mThank you for installing \033[1;33mzse\033[0m!")
-        print("You will need to configure your settings. A config.ini file will be created when you first run zse")
+        print("You will need to configure your settings."
+              + "A config.ini file will be created when you first run zse")
 
 with open("requirements.txt", encoding="utf-8") as f:
     requirements = f.read().splitlines()
