@@ -12,7 +12,6 @@ import configparser
 import socket
 import subprocess
 from platformdirs import user_config_dir
-import pkg_resources
 import paramiko
 from paramiko import (
     AuthenticationException,
@@ -121,22 +120,28 @@ def create_config():
     config_file_path = os.path.join(config_dir, "config.ini")
 
     if not os.path.exists(config_file_path):
+        config_content = """
+            [server]
+            addr = login.cse.unsw.edu.au  # no need to change
+            port = 22  # no need to change
+            user =  # your zID
+
+            [auth]  # password auth
+            type = password  # don't change
+            password =  # optional (but recommended)
+
+            # [auth]  # key auth
+            # type = "key"
+            # private_key_path = "~/.ssh/id_ed25519"  # required for key auth
+            # public_key_path = "/path/to/public/key"  # optional
+            # passphrase = "secret"  # optional
+        """
         try:
-            source_file = pkg_resources.resource_filename(
-                __name__, "config.ini"
-            )
-            if os.path.exists(source_file):
-                shutil.copy(source_file, config_file_path)
-            else:
-                print("Sample config file is missing.")
-        except FileNotFoundError:
-            print("Source config file not found.")
-        except PermissionError:
-            print("Permission denied.")
-        except shutil.SameFileError:
-            print("Source and destination are the same file.")
-        except IOError as e:
-            print(f"IO error occurred: {e}")
+            with open(config_file_path, 'w') as config_file:
+                config_file.write(config_content.strip())
+                print("\033[32mConfig file created successfully.\033[0m")
+        except Exception as e:
+            print(f"\033[31mError creating config file: {e}\033[0m")
 
 
 def ssh_connect(args):
