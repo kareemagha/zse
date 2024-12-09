@@ -131,16 +131,16 @@ def create_config():
     if not os.path.exists(config_file_path):
         config_content = """
             [server]
-            addr = login.cse.unsw.edu.au  # no need to change
+            address = login.cse.unsw.edu.au  # no need to change
             port = 22  # no need to change
-            user =  # your zID
+            username =  # your zID
 
             [auth]  # password auth
             type = password  # don't change
             password =  # optional (but recommended)
 
             # [auth]  # key auth
-            # type = "key"
+            # type = key
             # private_key_path = "~/.ssh/id_ed25519"  # required for key auth
             # public_key_path = "/path/to/public/key"  # optional
             # passphrase = "secret"  # optional
