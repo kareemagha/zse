@@ -173,7 +173,7 @@ def ssh_connect(args):
         print_err_msg(Error.AUTH)
 
     ssh_client = paramiko.SSHClient()
-    ssh_client.set_missing_host_key_policy(paramiko.RejectPolicy())
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     try:
         print_status(
@@ -394,7 +394,12 @@ def handle_file(sftp, item, remote_item_path, local_item_path, args):
 def should_ignore(path, args):
     """Helper function to determine what files/foldes to ignore when syncing"""
     base_name = os.path.basename(path)
-    ignored_files = re.split(r'[,\s]+', args.exclude.strip())
+    ignored_files = IGNORE_DIRS
+    if args.exclude:
+        try:
+            ignored_files = re.split(r'[,\s]+', args.exclude.strip())
+        except (KeyError, TypeError, ValueError):
+            return True
     if base_name in IGNORE_DIRS or path in ignored_files:
         return True
     if any(base_name.startswith(prefix) for prefix in IGNORE_PREFIXES):
