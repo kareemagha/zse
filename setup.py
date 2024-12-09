@@ -12,7 +12,7 @@ class PostInstallCommand(install):
 
 setup(
     name='zse',
-    version='1.1.4',
+    version='1.1.5',
     description='A CLI tool that allows UNSW students to submit work to CSE machines.',
     author='Kareem Agha',
     packages=find_packages(),
