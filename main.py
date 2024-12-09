@@ -23,7 +23,7 @@ from colorama import init, Fore, Style
 REMOTE_DIR = ".zse/"
 IGNORE_DIRS = [".git"]
 IGNORE_PREFIXES = ["_", "."]
-VERSION_NO = "1.1.1"
+VERSION_NO = "1.1.2"
 
 
 class Error(Enum):
@@ -70,7 +70,7 @@ def setup_argparse():
         "-V",
         "--version",
         action="version",
-        version="v1.1.0"
+        version=VERSION_NO
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output."
