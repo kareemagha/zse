@@ -4,6 +4,7 @@
 import os
 import sys
 import time
+import re
 import shutil
 import argparse
 import stat
@@ -22,7 +23,7 @@ from colorama import init, Fore, Style
 REMOTE_DIR = ".zse/"
 IGNORE_DIRS = [".git"]
 IGNORE_PREFIXES = ["_", "."]
-VERSION_NO = "1.1.1"
+VERSION_NO = "1.1.2"
 
 
 class Error(Enum):
@@ -69,7 +70,7 @@ def setup_argparse():
         "-V",
         "--version",
         action="version",
-        version="v1.1.0"
+        version=VERSION_NO
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output."
@@ -98,6 +99,14 @@ def setup_argparse():
         "--local",
         type=str,
         help="Downloads files from remote server. Useful for fetch commands.",
+    )
+    parser.add_argument(
+        "-e",
+        "--exclude",
+        nargs="?",
+        const="./",
+        type=str,
+        help="Excludes folders/files from syncing (default is './' if no value is provided)"
     )
     args = parser.parse_args()
 
@@ -273,6 +282,7 @@ def upload_and_run(sftp, local_dir, remote_dir, ssh_client, args):
     if args.verbose:
         print(f"Files will be uploaded to: {remote_dir}")
 
+    sftp.mkdir(remote_dir)
     sftp_recursive_put(sftp, local_path=local_dir,
                        remote_path=remote_dir, args=args)
     print_status(Status.SYNCING)
@@ -381,10 +391,11 @@ def handle_file(sftp, item, remote_item_path, local_item_path, args):
             print(f"Deleted remote file: {remote_item_path}")
 
 
-def should_ignore(path):
+def should_ignore(path, args):
     """Helper function to determine what files/foldes to ignore when syncing"""
     base_name = os.path.basename(path)
-    if base_name in IGNORE_DIRS:
+    ignored_files = re.split(r'[,\s]+', args.exclude.strip())
+    if base_name in IGNORE_DIRS or path in ignored_files:
         return True
     if any(base_name.startswith(prefix) for prefix in IGNORE_PREFIXES):
         return True
@@ -394,7 +405,7 @@ def should_ignore(path):
 def sftp_recursive_put(sftp, local_path, remote_path, args):
     """Recursively looks through direcotries to find files to sync"""
     try:
-        if should_ignore(local_path):
+        if should_ignore(local_path, args):
             if args.verbose:
                 print(f"Ignoring: {local_path}")
             return
