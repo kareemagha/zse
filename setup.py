@@ -2,6 +2,9 @@
 from setuptools import setup, find_packages
 from setuptools.command.install import install
 
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
 class PostInstallCommand(install):
     """Prints message after install"""
     def run(self):
@@ -14,6 +17,8 @@ setup(
     name='zse',
     version='1.1.5',
     description='A CLI tool that allows UNSW students to submit work to CSE machines.',
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     author='Kareem Agha',
     packages=find_packages(),
     package_data={
