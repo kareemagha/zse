@@ -23,7 +23,7 @@ from colorama import init, Fore, Style
 REMOTE_DIR = ".zse/"
 IGNORE_DIRS = [".git"]
 IGNORE_PREFIXES = ["_", "."]
-VERSION_NO = "1.1.3"
+VERSION_NO = "1.1.4"
 
 
 class Error(Enum):
@@ -173,7 +173,7 @@ def ssh_connect(args):
         print_err_msg(Error.AUTH)
 
     ssh_client = paramiko.SSHClient()
-    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh_client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
     try:
         print_status(
