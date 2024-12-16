@@ -141,9 +141,9 @@ def create_config():
 
             # [auth]  # key auth
             # type = key
-            # private_key_path = "~/.ssh/id_ed25519"  # required for key auth
-            # public_key_path = "/path/to/public/key"  # optional
-            # passphrase = "secret"  # optional
+            # private_key_path = ~/.ssh/id_ed25519  # required for key auth
+            # public_key_path = /path/to/public/key  # optional
+            # passphrase = secret  # optional
         """
         try:
             with open(config_file_path, 'w', encoding="utf-8") as config_file:
@@ -189,6 +189,7 @@ def ssh_connect(args):
                 username=server_info["username"],
                 pkey=paramiko.Ed25519Key(
                     filename=auth_info["private_key_path"]),
+                passphrase=auth_info["passphrase"],
                 password=auth_info["password"],
                 port=server_info["port"],
             )
@@ -196,7 +197,8 @@ def ssh_connect(args):
                 SSHException,
                 socket.error,
                 socket.timeout,
-                KeyboardInterrupt) as _:
+                KeyboardInterrupt) as e:
+            print(e)
             print_err_msg(Error.CONNECTION)
     elif auth_info["type"] == "password":
         try:
