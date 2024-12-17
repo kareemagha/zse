@@ -23,7 +23,7 @@ from colorama import init, Fore, Style
 REMOTE_DIR = ".zse/"
 IGNORE_DIRS = [".git"]
 IGNORE_PREFIXES = ["_", "."]
-VERSION_NO = "1.1.5"
+VERSION_NO = "1.2.0"
 
 
 class Error(Enum):
@@ -130,20 +130,22 @@ def create_config():
 
     if not os.path.exists(config_file_path):
         config_content = """
-            [server]
-            address = login.cse.unsw.edu.au  # no need to change
-            port = 22  # no need to change
-            username =  # your zID
+[server]
+address = login.cse.unsw.edu.au # no need to change
+port = 22 # no need to change
+username = z5555555 # your zID
 
-            [auth]  # password auth
-            type = password  # don't change
-            password =  # optional (but recommended)
+# note: dont use quotation marks around anything!
 
-            # [auth]  # key auth
-            # type = key
-            # private_key_path = "~/.ssh/id_ed25519"  # required for key auth
-            # public_key_path = "/path/to/public/key"  # optional
-            # passphrase = "secret"  # optional
+[auth] # password auth
+type = password # do not change
+password =  # optional (but recommended)
+
+; [auth] # key auth
+; type = key # do not change
+; private_key_path = ~/.ssh/id_ed25519 # required for key auth
+; passphrase = # optional if you have set a passphrase
+; password = # optional if you havent created a keypair
         """
         try:
             with open(config_file_path, 'w', encoding="utf-8") as config_file:
@@ -179,7 +181,8 @@ def ssh_connect(args):
         print_status(
             Status.CONNECTING, add=server_info["address"], port=server_info["port"]
         )
-    except (KeyError, TypeError, ValueError) as _config_err:
+    except (KeyError, TypeError, ValueError) as config_err:
+        print(config_err)
         print_err_msg(Error.EMPTY)
 
     if auth_info["type"] == "key":
@@ -189,6 +192,7 @@ def ssh_connect(args):
                 username=server_info["username"],
                 pkey=paramiko.Ed25519Key(
                     filename=auth_info["private_key_path"]),
+                passphrase=auth_info["passphrase"],
                 password=auth_info["password"],
                 port=server_info["port"],
             )
@@ -196,21 +200,30 @@ def ssh_connect(args):
                 SSHException,
                 socket.error,
                 socket.timeout,
-                KeyboardInterrupt) as _:
+                KeyboardInterrupt) as e:
+            print(e)
             print_err_msg(Error.CONNECTION)
     elif auth_info["type"] == "password":
         try:
+            if (auth_info["password"]) == "":
+                password_var = input("What is your password: ")
+            else:
+                password_var = auth_info["password"]
+
             ssh_client.connect(
                 hostname=server_info["address"],
                 username=server_info["username"],
-                password=auth_info["password"],
+                password=password_var,
                 port=server_info["port"],
+                # if this isnt here then itll just try and connect via SSH
+                look_for_keys=False
             )
         except (AuthenticationException,
                 SSHException,
                 socket.error,
                 socket.timeout,
-                KeyboardInterrupt) as _:
+                KeyboardInterrupt) as e:
+            print(e)
             print_err_msg(Error.CONNECTION)
     else:
         print_err_msg(Error.EMPTY)
