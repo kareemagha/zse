@@ -23,7 +23,7 @@ from colorama import init, Fore, Style
 REMOTE_DIR = ".zse/"
 IGNORE_DIRS = [".git"]
 IGNORE_PREFIXES = ["_", "."]
-VERSION_NO = "1.1.5"
+VERSION_NO = "1.2.0"
 
 
 class Error(Enum):
@@ -133,7 +133,7 @@ def create_config():
 [server]
 address = login.cse.unsw.edu.au # no need to change
 port = 22 # no need to change
-username =  z5555555 # your zID
+username = z5555555 # your zID
 
 # note: dont use quotation marks around anything!
 
