@@ -130,20 +130,22 @@ def create_config():
 
     if not os.path.exists(config_file_path):
         config_content = """
-            [server]
-            address = login.cse.unsw.edu.au  # no need to change
-            port = 22 # no need to change
-            username = z5555555 # your zID
+[server]
+address = login.cse.unsw.edu.au # no need to change
+port = 22 # no need to change
+username =  z5555555 # your zID
 
-            [auth] # password auth
-            type = password # don't change
-            password =  # optional (but recommended)
+# note: dont use quotation marks around anything!
 
-            # [auth] # key auth
-            # type = key
-            # private_key_path = ~/.ssh/id_ed25519  # required for key auth
-            # public_key_path = /path/to/public/key  # optional
-            # passphrase = secret  # optional
+[auth] # password auth
+type = password # do not change
+password =  # optional (but recommended)
+
+; [auth] # key auth
+; type = key # do not change
+; private_key_path = ~/.ssh/id_ed25519 # required for key auth
+; passphrase = # optional if you have set a passphrase
+; password = # optional if you havent created a keypair
         """
         try:
             with open(config_file_path, 'w', encoding="utf-8") as config_file:
