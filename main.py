@@ -132,14 +132,14 @@ def create_config():
         config_content = """
             [server]
             address = login.cse.unsw.edu.au  # no need to change
-            port = 22  # no need to change
-            username =  # your zID
+            port = 22 # no need to change
+            username = z5555555 # your zID
 
-            [auth]  # password auth
-            type = password  # don't change
+            [auth] # password auth
+            type = password # don't change
             password =  # optional (but recommended)
 
-            # [auth]  # key auth
+            # [auth] # key auth
             # type = key
             # private_key_path = ~/.ssh/id_ed25519  # required for key auth
             # public_key_path = /path/to/public/key  # optional
@@ -173,13 +173,15 @@ def ssh_connect(args):
         print_err_msg(Error.AUTH)
 
     ssh_client = paramiko.SSHClient()
+    ssh_client.load_system_host_keys()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
+    
     try:
         print_status(
             Status.CONNECTING, add=server_info["address"], port=server_info["port"]
         )
-    except (KeyError, TypeError, ValueError) as _config_err:
+    except (KeyError, TypeError, ValueError) as config_err:
+        print(config_err)
         print_err_msg(Error.EMPTY)
 
     if auth_info["type"] == "key":
@@ -202,17 +204,25 @@ def ssh_connect(args):
             print_err_msg(Error.CONNECTION)
     elif auth_info["type"] == "password":
         try:
+            if ((auth_info["password"]) == ""):
+                password_var = input("What is your password: ")
+            else:
+                password_var = auth_info["password"]
+            
             ssh_client.connect(
                 hostname=server_info["address"],
                 username=server_info["username"],
-                password=auth_info["password"],
+                password=password_var,
                 port=server_info["port"],
+                # if this isnt here then itll just try and connect via SSH
+                look_for_keys=False
             )
         except (AuthenticationException,
                 SSHException,
                 socket.error,
                 socket.timeout,
-                KeyboardInterrupt) as _:
+                KeyboardInterrupt) as e:
+            print(e)
             print_err_msg(Error.CONNECTION)
     else:
         print_err_msg(Error.EMPTY)
