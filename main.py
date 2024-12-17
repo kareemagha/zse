@@ -175,9 +175,8 @@ def ssh_connect(args):
         print_err_msg(Error.AUTH)
 
     ssh_client = paramiko.SSHClient()
-    ssh_client.load_system_host_keys()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    
+
     try:
         print_status(
             Status.CONNECTING, add=server_info["address"], port=server_info["port"]
@@ -206,11 +205,11 @@ def ssh_connect(args):
             print_err_msg(Error.CONNECTION)
     elif auth_info["type"] == "password":
         try:
-            if ((auth_info["password"]) == ""):
+            if (auth_info["password"]) == "":
                 password_var = input("What is your password: ")
             else:
                 password_var = auth_info["password"]
-            
+
             ssh_client.connect(
                 hostname=server_info["address"],
                 username=server_info["username"],
