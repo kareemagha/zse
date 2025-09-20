@@ -1,19 +1,20 @@
 """Progam that allows file upload to UNSW CSE machines
-    Useful for autotests and lab submissions
+Useful for autotests and lab submissions
 """
+
 import os
+import secrets
 import sys
-import time
 import re
 import shutil
 import argparse
-import threading
-import select
 import stat
 from enum import Enum
 import configparser
 import socket
 import subprocess
+import shlex
+import time
 from platformdirs import user_config_dir
 import paramiko
 from paramiko import (
@@ -25,11 +26,12 @@ from colorama import init, Fore, Style
 REMOTE_DIR = ".zse/"
 IGNORE_DIRS = [".git"]
 IGNORE_PREFIXES = ["_", "."]
-VERSION_NO = "1.4.0"
+VERSION_NO = "1.5.0"
 
 
 class Error(Enum):
     """Enum for error types"""
+
     CONNECTION = 0
     AUTH = 1
     EMPTY = 2
@@ -38,6 +40,7 @@ class Error(Enum):
 
 class Status(Enum):
     """Enum for satus types"""
+
     CONNECTING = 0
     AUTHENTICATING = 1
     SFTP = 2
@@ -60,20 +63,17 @@ def main():
 def setup_argparse():
     """Setups argparse to read and output the result of arguments"""
     parser = argparse.ArgumentParser(
-        description="CLI tool that allows UNSW students to submit work to CSE machines.")
+        description="CLI tool that allows UNSW students to submit work to CSE machines."
+    )
     parser.add_argument("command", help="The command to execute", nargs="+")
     parser.add_argument(
-        "-p",
-        "--pipe",
+        "-i",
+        "--interactive",
         action="store_true",
-        help="Creates a channel to send multiple commands via the same shell.",
+        help="Uploads to a tempdir then opens a real ssh -t session:\n"
+        '  ssh -t ZID@host "cd <tempdir> && <command> && bash; rm -rf <tempdir>"',
     )
-    parser.add_argument(
-        "-V",
-        "--version",
-        action="version",
-        version=VERSION_NO
-    )
+    parser.add_argument("-V", "--version", action="version", version=VERSION_NO)
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output."
     )
@@ -94,7 +94,7 @@ def setup_argparse():
         "-f",
         "--force",
         action="store_true",
-        help="Force file syncing, overwriting existing files without user input"
+        help="Force file syncing, overwriting existing files without user input",
     )
     parser.add_argument(
         "-l",
@@ -108,7 +108,7 @@ def setup_argparse():
         nargs="?",
         const="./",
         type=str,
-        help="Excludes folders/files from syncing (default is './' if no value is provided)"
+        help="Excludes folders/files from syncing (default is './' if no value is provided)",
     )
     args = parser.parse_args()
 
@@ -150,7 +150,7 @@ password =  # optional (but recommended)
 ; password = # optional if you havent created a keypair
         """
         try:
-            with open(config_file_path, 'w', encoding="utf-8") as config_file:
+            with open(config_file_path, "w", encoding="utf-8") as config_file:
                 config_file.write(config_content.strip())
                 print("\033[32mConfig file created successfully.\033[0m\n")
                 print("Edit this file to use zse:")
@@ -173,7 +173,7 @@ def ssh_connect(args):
     try:
         server_info = config["server"]
         auth_info = config["auth"]
-    except (KeyError, TypeError, ValueError) as _config_err:
+    except (KeyError, TypeError, ValueError):
         print_err_msg(Error.AUTH)
 
     ssh_client = paramiko.SSHClient()
@@ -192,17 +192,18 @@ def ssh_connect(args):
             ssh_client.connect(
                 hostname=server_info["address"],
                 username=server_info["username"],
-                pkey=paramiko.Ed25519Key(
-                    filename=auth_info["private_key_path"]),
+                pkey=paramiko.Ed25519Key(filename=auth_info["private_key_path"]),
                 passphrase=auth_info["passphrase"],
                 password=auth_info["password"],
-                port=server_info["port"],
+                port=int(server_info.get("port", 22)),
             )
-        except (AuthenticationException,
-                SSHException,
-                socket.error,
-                socket.timeout,
-                KeyboardInterrupt) as e:
+        except (
+            AuthenticationException,
+            SSHException,
+            socket.error,
+            socket.timeout,
+            KeyboardInterrupt,
+        ) as e:
             print(e)
             print_err_msg(Error.CONNECTION)
     elif auth_info["type"] == "password":
@@ -216,15 +217,16 @@ def ssh_connect(args):
                 hostname=server_info["address"],
                 username=server_info["username"],
                 password=password_var,
-                port=server_info["port"],
-                # if this isnt here then itll just try and connect via SSH
-                look_for_keys=False
+                port=int(server_info.get("port", 22)),
+                look_for_keys=False,
             )
-        except (AuthenticationException,
-                SSHException,
-                socket.error,
-                socket.timeout,
-                KeyboardInterrupt) as e:
+        except (
+            AuthenticationException,
+            SSHException,
+            socket.error,
+            socket.timeout,
+            KeyboardInterrupt,
+        ) as e:
             print(e)
             print_err_msg(Error.CONNECTION)
     else:
@@ -237,39 +239,34 @@ def ssh_connect(args):
 
 def read_command(args, ssh_client):
     """Reads the user command, and directs to correct function"""
-    command_str = " ".join(args.command)
     try:
-        if args.pipe:
-            ssh_mirror(ssh_client, args, command_str)
-        else:
-            execute_user_command(ssh_client, args)
-    except (SSHException,
-            IOError,
-            OSError,
-            subprocess.CalledProcessError,
-            KeyboardInterrupt) as _:
+        execute_user_command(ssh_client, args)
+    except (
+        SSHException,
+        IOError,
+        OSError,
+        subprocess.CalledProcessError,
+        KeyboardInterrupt,
+    ):
         sys.exit(1)
 
-# pylint: disable=too-many-arguments
+
 def execute_user_command(ssh_client, args, s=None):
     """Executes the user's command in the remote shell (for non pipe option)"""
     if args.clear:
         if args.verbose:
             print(f"Clearing remote directory {REMOTE_DIR}")
-        _stdin, stdout, _stderr = ssh_client.exec_command(
-            f"rm -r {REMOTE_DIR}")
+        _stdin, stdout, _stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
         exit_code = stdout.channel.recv_exit_status()
         while exit_code != 0:
             try:
                 if args.verbose:
                     print(f"Command failed with exit code {exit_code}. Retrying...")
-                _stdin, stdout, _stderr = ssh_client.exec_command(
-                    f"rm -r {REMOTE_DIR}")
+                _stdin, stdout, _stderr = ssh_client.exec_command(f"rm -r {REMOTE_DIR}")
                 exit_code = stdout.channel.recv_exit_status()
             except KeyboardInterrupt:
                 print_err_msg(Error.REMOVAL)
 
-    # checks the file exists in the dir
     _stdin, stdout, _stderr = ssh_client.exec_command(f"test -d {REMOTE_DIR}")
     exit_status = stdout.channel.recv_exit_status()
 
@@ -278,19 +275,14 @@ def execute_user_command(ssh_client, args, s=None):
         if args.verbose:
             print(f"Directory '{REMOTE_DIR}' created with permissions {700}.")
 
-    # sets up sftp to send files
     print_status(Status.SFTP)
     sftp = ssh_client.open_sftp()
     local_dir = args.dir if args.dir else "./"
 
-    timestamp = time.strftime("%a %d %b %Y %H-%M-%S")
-    remote_dir = os.path.join(REMOTE_DIR, timestamp)
+    remote_dir = os.path.join(REMOTE_DIR, secrets.token_hex(4))
 
     if args.local:
-        run_and_donwload(sftp, remote_dir, ssh_client, args)
-    elif args.pipe:
-        upload_and_run(sftp, local_dir, remote_dir, ssh_client, args, s=s)
-        return
+        run_and_download(sftp, remote_dir, ssh_client, args)
     else:
         upload_and_run(sftp, local_dir, remote_dir, ssh_client, args)
 
@@ -301,33 +293,93 @@ def upload_and_run(sftp, local_dir, remote_dir, ssh_client, args, *, s=None):
         print(f"Files will be uploaded to: {remote_dir}")
 
     sftp.mkdir(remote_dir)
-    sftp_recursive_put(sftp, local_path=local_dir,
-                       remote_path=remote_dir, args=args)
+    sftp_recursive_put(sftp, local_path=local_dir, remote_path=remote_dir, args=args)
     print_status(Status.SYNCING)
-    # may be required to display terminal colours - will work without depending
-    # on bashrc config on CSE machines
-    if not args.pipe:
+
+    if not args.interactive:
         ssh_client.exec_command("export TERM=xterm-256color")
-    command = f'cd "{remote_dir}" && yes | {" ".join(args.command)}'
-
-    if args.verbose:
-        print(f"Running command: {command}")
-
-    if not args.pipe:
+        give_bypassed_user_cmd = (
+            ("yes | " + " ".join(args.command))
+            if args.command[0].split()[0]
+            in ("give",)  # add more stuff to auto bypass if needed
+            else " ".join(args.command)
+        )
+        command = f'cd "{remote_dir}" && {give_bypassed_user_cmd}'
+        if args.verbose:
+            print(f"Running command: {command}")
         print_status(Status.SENT, command=" ".join(args.command))
         print_status(Status.OUTPUT)
+
         _stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
-        read_terminal(stdout, stderr)
+        try:
+            read_terminal(stdout, stderr)
+        except KeyboardInterrupt:
+            pass
 
-    if args.pipe:
-        s.send(command + "\n")
-        return
+        ssh_client.exec_command(f"rm -rf ~/{shlex.quote(remote_dir)}")
+        if args.verbose:
+            print(f"Cleared remote directory {remote_dir}")
 
-    ssh_client.close()
-    sys.exit(0)
+        ssh_client.close()
+        sys.exit(0)
+
+    # --- New -p behavior: system ssh -t session ---
+    try:
+        sftp.close()
+    except Exception:
+        pass
+    try:
+        ssh_client.close()
+    except Exception:
+        pass
+
+    config = configparser.ConfigParser(inline_comment_prefixes="#")
+    config_file = os.path.join(user_config_dir("zse"), "config.ini")
+    config.read(config_file)
+    server_info = config["server"]
+    auth_info = config["auth"]
+
+    user = server_info["username"]
+    host = server_info["address"]
+    port = str(server_info.getint("port", fallback=22))
+
+    remote_cmd = (
+        shlex.join(["cd", remote_dir])  # cd into temp dir
+        + (
+            (" && " + " ".join(args.command)) if args.command else ""
+        )  # run user command
+        + "; bash; "  # launch shell
+        + " ".join(["rm", "-rf", "~/" + shlex.quote(remote_dir)])  # delete temp dir
+    )
+    # print("Remote cmd:", remote_cmd)
+
+    ssh_cmd = ["ssh", "-t", "-p", port, f"{user}@{host}", remote_cmd]
+
+    pw = auth_info.get("password", "").strip()
+    if auth_info.get("type", "password") == "password" and pw:
+        if shutil.which("sshpass"):
+            ssh_cmd = ["sshpass", "-p", pw] + ssh_cmd
+        elif args.verbose:
+            print(
+                "sshpass not found; falling back to interactive SSH prompt. "
+                "Tip: install sshpass or use key auth in config.ini."
+            )
+
+    if args.verbose:
+        print(f"Launching interactive session: {' '.join(ssh_cmd)}")
+
+    print_status(Status.SENT, command=" ".join(args.command))
+    print_status(Status.OUTPUT)
+
+    proc = subprocess.Popen(ssh_cmd, stdin=None, stdout=None, stderr=None)
+    rc = proc.wait()
+
+    print_status(Status.END_OUTPUT)
+    print_status(Status.EXIT_STAT, exit_stat=rc)
+    sys.exit(rc)
 
 
-def run_and_donwload(sftp, remote_dir, ssh_client, args):
+def run_and_download(sftp, remote_dir, ssh_client, args):
     """Runs remote command and downloads files from dir"""
 
     sftp.mkdir(remote_dir)
@@ -342,28 +394,53 @@ def run_and_donwload(sftp, remote_dir, ssh_client, args):
         local_dir = "./"
 
     print_status(Status.OUTPUT)
-    read_terminal(stdout, stderr)
+    try:
+        read_terminal(stdout, stderr)
+    except KeyboardInterrupt:
+        pass
     download_dir(sftp, remote_dir, local_dir, args)
+    ssh_client.exec_command(f"rm -rf ~/{shlex.quote(remote_dir)}")
+    if args.verbose:
+        print(f"Cleared remote directory {remote_dir}")
 
     sys.exit(0)
 
 
 def read_terminal(stdout, stderr):
-    """Reads stdout and stderr of program in semi real time"""
-    for stdout_line in iter(stdout.readline, ""):
-        if stdout_line:
-            sys.stdout.write(stdout_line)
-            sys.stdout.flush()
+    """
+    Stream stdout/stderr in (semi) real-time without blocking forever on readline().
+    Interleaves both streams and allows KeyboardInterrupt to be raised promptly.
+    """
+    chan = stdout.channel  # same channel backs both stdout/stderr
+    chan.settimeout(0.1)  # short timeout makes the loop interruptible
 
-    for stderr_line in iter(stderr.readline, ""):
-        if stderr_line:
-            sys.stderr.write(stderr_line)
-            sys.stderr.flush()
+    try:
+        while True:
+            try:
+                if chan.recv_ready():
+                    sys.stdout.buffer.write(chan.recv(4096))
+                    sys.stdout.flush()
+                if chan.recv_stderr_ready():
+                    sys.stderr.buffer.write(chan.recv_stderr(4096))
+                    sys.stderr.flush()
+            except socket.timeout:
+                pass  # just poll again
 
-    exit_status = stdout.channel.recv_exit_status()
-    print_status(Status.END_OUTPUT)
-    print_status(Status.EXIT_STAT, exit_stat=exit_status)
+            if chan.exit_status_ready():
+                break
 
+            time.sleep(0.03)  # keep CPU calm
+    finally:
+        print()
+        print_status(Status.END_OUTPUT)
+        chan.send("\x03")  # Ctrl c
+        chan.send("\x04")  # Ctrl d
+
+        # print("Sent CTRL-C to server")
+        # Send CTRL-C to the server so we dont have infinite loop if server is in a loop.
+        exit_status = chan.recv_exit_status()
+
+        print_status(Status.EXIT_STAT, exit_stat=exit_status)
 
 
 def download_dir(sftp, remote_path, local_path, args):
@@ -385,8 +462,7 @@ def download_dir(sftp, remote_path, local_path, args):
                     if args.verbose:
                         print(f"Deleted remote directory: {remote_item_path}")
             else:
-                handle_file(sftp, item, remote_item_path,
-                            local_item_path, args)
+                handle_file(sftp, item, remote_item_path, local_item_path, args)
     except KeyboardInterrupt:
         print(Fore.RED + "\nConnection closed by user." + Style.RESET_ALL)
         sys.exit(0)
@@ -399,7 +475,8 @@ def handle_file(sftp, item, remote_item_path, local_item_path, args):
 
     if os.path.isfile(local_item_path) and not args.force:
         user_input = input(
-            f"{item.filename} already exists. Replace it? (y/n): ").lower()
+            f"{item.filename} already exists. Replace it? (y/n): "
+        ).lower()
         if user_input not in ["y", "yes"]:
             if args.verbose:
                 print(f"Skipped: {remote_item_path}")
@@ -421,7 +498,7 @@ def should_ignore(path, args):
     ignored_files = IGNORE_DIRS
     if args.exclude:
         try:
-            ignored_files = re.split(r'[,\s]+', args.exclude.strip())
+            ignored_files = re.split(r"[,\s]+", args.exclude.strip())
         except (KeyError, TypeError, ValueError):
             return True
     if base_name in IGNORE_DIRS or path in ignored_files:
@@ -464,102 +541,19 @@ def sftp_recursive_put(sftp, local_path, remote_path, args):
                     f"{local_path} -> "
                     f"{remote_path}"[:terminal_length],
                     flush=True,
-                    end=""
+                    end="",
                 )
-            print(f"\r\033[KTransferring file: "
-                  f"{local_path} -> {remote_path}"[:terminal_length],
-                  flush=True,
-                  end=""
-                  )
+            print(
+                f"\r\033[KTransferring file: {local_path} -> {remote_path}"[
+                    :terminal_length
+                ],
+                flush=True,
+                end="",
+            )
             sftp.put(local_path, remote_path)
     except KeyboardInterrupt:
         print(Fore.RED + "\nConnection closed by user." + Style.RESET_ALL)
         sys.exit(0)
-
-
-def ssh_reader(shell, last_sent, lock):
-    """
-    Background reader for SSH shell output.
-
-    Parameters:
-        shell: The Paramiko channel object to read output from.
-        last_sent (dict): A dictionary used to track the last line sent to the shell.
-            Expected structure: {'line': str or None}. Used for filtering echoed input.
-        lock (threading.Lock): A threading lock used to synchronize access to last_sent
-            between threads.
-    """
-    while True:
-        try:
-            r, _, _ = select.select([shell], [], [], 0.5)
-            if not r:
-                continue
-            data = shell.recv(4096)
-            if not data:
-                break
-            text = data.decode(errors="ignore")
-            with lock:
-                ls = last_sent["line"]
-            if ls:
-                lines = text.splitlines(True)
-                if lines and lines[0].strip() == ls.strip():
-                    lines = lines[1:]
-                    while lines and lines[0] in ("\n", "\r", "\r\n"):
-                        lines = lines[1:]
-                    text = "".join(lines)
-                    with lock:
-                        last_sent["line"] = None
-            sys.stdout.write(text)
-            sys.stdout.flush()
-        except (OSError, paramiko.SSHException):
-            break
-
-
-
-def ssh_mirror(ssh_client, args, command_str):
-    """Pipe function that acts like an ssh console"""
-    shell = ssh_client.invoke_shell(term='xterm-256color')
-    shell.set_combine_stderr(True)
-
-    last_sent = {"line": None}
-    lock = threading.Lock()
-
-    t = threading.Thread(target=ssh_reader, args=(
-        shell, last_sent, lock), daemon=True)
-    t.start()
-
-    if not args.verbose:
-        shell.send("stty echo\n")
-    if command_str:
-        with lock:
-            last_sent["line"] = command_str
-        execute_user_command(ssh_client, args, shell)
-
-    time.sleep(0.5)
-    print(Fore.GREEN + '\nInput "quit" or "exit" to exit the shell.' + Style.RESET_ALL)
-    try:
-        while True:
-            line = input("")
-            low = line.strip().lower()
-
-            if low in {"exit", "quit"}:
-                break
-            if low in {"cls", "clear"}:
-                os.system("cls" if os.name == "nt" else "clear")
-                continue
-
-            if line.strip():
-                with lock:
-                    last_sent["line"] = line
-            shell.send(line + "\n")
-    except KeyboardInterrupt:
-        print(Fore.RED + "\nConnection closed by user." + Style.RESET_ALL)
-    finally:
-        try:
-            shell.close()
-        except OSError:
-            pass
-
-
 
 
 def print_err_msg(errno):
@@ -602,25 +596,23 @@ def create_status_printer():
     def _print_status(status_num, **kwargs):
         nonlocal counter
 
-        non_increment = {
-            Status.OUTPUT,
-            Status.END_OUTPUT,
-            Status.EXIT_STAT
-        }
+        non_increment = {Status.OUTPUT, Status.END_OUTPUT, Status.EXIT_STAT}
 
         if status_num not in non_increment:
             counter += 1
             total_steps = 5
             sys.stdout.write(f"\r\033[K\033[1;90m[{counter}/{total_steps}]\033[0m\t")
 
-        command = kwargs.get('command')
-        add = kwargs.get('add')
-        port = kwargs.get('port')
-        zid = kwargs.get('zid')
-        exit_stat = kwargs.get('exit_stat')
+        command = kwargs.get("command")
+        add = kwargs.get("add")
+        port = kwargs.get("port")
+        zid = kwargs.get("zid")
+        exit_stat = kwargs.get("exit_stat")
 
         if status_num == Status.CONNECTING:
-            sys.stdout.write(f"Connecting to: \033[3;36m{add}:\033[3;35m{port}\033[0m\n")
+            sys.stdout.write(
+                f"Connecting to: \033[3;36m{add}:\033[3;35m{port}\033[0m\n"
+            )
         elif status_num == Status.AUTHENTICATING:
             sys.stdout.write(f"Authenticated as: \033[3;32m{zid}\033[0m\n")
         elif status_num == Status.SFTP:
@@ -631,7 +623,8 @@ def create_status_printer():
             sys.stdout.write(f"Command sent: \033[33m{command}\033[0m\n")
         elif status_num == Status.OUTPUT:
             sys.stdout.write(
-                "\033[1;35m=============== Output ===============\033[0m\n")
+                "\033[1;35m=============== Output ===============\033[0m\n"
+            )
         elif status_num == Status.END_OUTPUT:
             sys.stdout.write(f"\033[1;35m{'=' * 38}\033[0m\n")
         elif status_num == Status.EXIT_STAT:
